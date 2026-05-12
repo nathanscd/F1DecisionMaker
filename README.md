@@ -1,306 +1,238 @@
-## Lógica inicial do app
+# F1 Strategy Analyzer
 
-# O PROJETO (versão certa)
+Sistema de análise estratégica de pitstops na Fórmula 1 baseado em dados históricos da OpenF1 API.
 
-Tema:
-“Análise do impacto estratégico dos pitstops no resultado de corridas da Fórmula 1”
+O projeto tem como objetivo analisar como decisões de pitstop impactam diretamente o resultado final de pilotos durante corridas da Formula 1.
 
-Objetivo:
-Descobrir como diferentes estratégias de pit afetam:
-
-* posição final
-* ganho/perda de tempo
-* chance de vitória
+Em vez de tentar prever corridas completas utilizando IA generativa, o foco do sistema é análise quantitativa, estatística e estratégica baseada em dados reais.
 
 ---
 
-# O QUE O SISTEMA VAI FAZER
-1. Coletar dados históricos da OpenF1
-2. Identificar pitstops
-3. Analisar:
+# Pergunta Principal do Projeto
 
-   * undercut
-   * overcut
-   * stint
-   * degradação
-4. Comparar:
+> A posição final do piloto possui relação direta com a estratégia de pitstop?
 
-   * estratégia usada
-   * resultado obtido
-5. Gerar métricas e visualizações
+O sistema busca responder essa pergunta através da análise de:
 
-# O RESULTADO FINAL DO PROJETO
-
-Você quer responder perguntas como:
-
-* Parar mais cedo aumenta chance de ganhar posição?
-* O undercut realmente funciona?
-* Quanto tempo um pneu perde por volta?
-* Qual composto degrada mais?
-* Qual equipe executa melhores estratégias?
-
-Isso é MUITO mais científico.
+* estratégias de pitstop
+* degradação dos pneus
+* undercuts
+* overcuts
+* número de paradas
+* momento do pit
+* ganho/perda de posição
+* tempo perdido nos pits
 
 ---
 
-# ESTRUTURA DO PROJETO
+# Objetivos
 
-## 1. COLETA DE DADOS
-
-Você pega:
-
-* laps
-* stints
-* pit
-* position
-
-Pra:
-
-* múltiplas corridas
-* múltiplos pilotos
+* Coletar e processar dados históricos de corridas
+* Identificar padrões estratégicos
+* Medir impacto de estratégias de pitstop
+* Comparar diferentes abordagens de corrida
+* Gerar métricas e visualizações analíticas
+* Produzir insights probabilísticos sobre decisões estratégicas
 
 ---
 
-## 2. TRATAMENTO DOS DADOS
+# Funcionalidades
 
-Aqui está o coração do projeto.
+## Análise de Estratégias
 
-Você precisa:
+* Comparação entre estratégias de:
 
-### Limpar:
+  * 1 stop
+  * 2 stops
+  * undercut
+  * overcut
 
-* voltas de safety car
-* voltas absurdas
-* erros
+## Análise de Degradação
 
-### Criar features:
+* Relação entre:
 
-* tire_age
-* degradation
-* pace
-* pit_loss
-* gain_after_pit
+  * desgaste do pneu
+  * tempo de volta
+  * performance do stint
+
+## Evolução de Posição
+
+* Visualização da posição do piloto ao longo da corrida
+* Destaque visual para pitstops
+
+## Análise de Pit Loss
+
+* Tempo médio perdido em pitstops
+* Comparação por circuito
+
+## Análise de Consistência
+
+* Ritmo médio do piloto
+* Variação de lap times
+* Consistência durante stints
 
 ---
 
-# PRINCIPAIS MÉTRICAS DO PROJETO
+# Feature: Insights Estratégicos
 
-Aqui é onde você ganha nota.
+O sistema possui uma funcionalidade chamada "Insights".
 
----
+Ela funciona como um mecanismo probabilístico de análise alternativa de estratégia.
 
-## MÉTRICA 1 — GAIN AFTER PIT
-
-A mais importante.
-
-Você mede:
-
-posição antes do pit
-vs
-posição X voltas depois
+Ao analisar uma corrida, o sistema identifica decisões de pitstop realizadas pelo piloto e gera cenários alternativos baseados em dados históricos e comportamento estatístico.
 
 Exemplo:
 
-* entrou P8
-* saiu P10
-* terminou P6
+> "Se o piloto tivesse realizado o pitstop 3 voltas antes utilizando pneus MEDIUM, a probabilidade estimada seria de terminar em P4 ao invés de P7."
 
-Resultado:
-→ pit foi vantajoso
+Os insights consideram:
 
----
+* degradação dos pneus
+* posição na pista
+* tráfego
+* pit loss
+* ritmo médio
+* estratégias semelhantes em corridas anteriores
 
-## MÉTRICA 2 — UNDERCUT SUCCESS RATE
+Importante:
 
-Você compara:
-
-* piloto que parou antes
-* piloto rival
-
-Pergunta:
-quem ficou na frente depois do ciclo de pits?
-
-Resultado:
-“Undercut funcionou em 68% dos casos”
-
-Isso é excelente pra apresentação.
+* os insights NÃO são previsões determinísticas
+* o sistema trabalha com probabilidade e análise estatística
 
 ---
 
-## MÉTRICA 3 — DEGRADAÇÃO
+# Tecnologias Utilizadas
 
-Você mede:
+## Backend
 
-* aumento médio do lap_time conforme tire_age
+* Python
+* Flask
+* Pandas
+* SQLite
+* Requests
 
-Resultado:
-“HARD perde em média 0.12s por volta”
+## Frontend
 
----
+* React
+* TypeScript
+* Vite
+* TailwindCSS
+* Recharts
 
-## MÉTRICA 4 — PIT LOSS
+## Dados
 
-Tempo perdido no pit.
-
-Você calcula:
-
-* média por circuito
-
-Resultado:
-“Monaco possui pit loss médio de 24s”
-
----
-
-## MÉTRICA 5 — ESTRATÉGIA VS RESULTADO
-
-Você pode comparar:
-
-* 1 stop
-* 2 stops
-
-Resultado:
-“2 stops tiveram melhor resultado médio em circuitos de alta degradação”
+* OpenF1
 
 ---
 
-# COMO VOCÊ IMPLEMENTA ISSO
+# Métricas Analisadas
 
-## BACKEND (Python)
+## Estratégia
 
-Você basicamente precisa de:
+* Número de pitstops
+* Momento do pitstop
+* Estratégia de compostos
+* Eficiência de undercut
 
-### pandas
+## Performance
 
-pra análise
+* Lap time médio
+* Rolling pace
+* Degradação do pneu
+* Consistência do piloto
 
-### matplotlib/plotly
+## Resultado
 
-pra gráficos
+* Ganho/perda após pit
+* Posição final
+* Eficiência da estratégia
+* Tempo perdido no pit
 
-### SQLite (opcional)
+## Probabilidade
 
-pra armazenar corridas
-
----
-
-# FRONTEND
-
-Sinceramente?
-
-Você nem precisa de React mais.
-
-Você pode:
-
-* usar Jupyter
-* Streamlit
-* ou dashboard simples
-
-MAS:
-se quiser manter React:
-→ faça apenas visualização
-
-Não tente realtime.
+* Chance estimada de ganho de posição
+* Impacto estratégico esperado
+* Cenários alternativos de corrida
 
 ---
 
-# COMO FICA A PIPELINE
+# Estrutura do Projeto
 
-## Passo 1
+```bash
+backend/
+├── app.py
+├── analysis/
+├── collectors/
+├── database/
+├── services/
+└── models/
 
-Baixar corridas
-
-## Passo 2
-
-Limpar dataset
-
-## Passo 3
-
-Identificar:
-
-* pits
-* stints
-* compostos
-
-## Passo 4
-
-Gerar métricas
-
-## Passo 5
-
-Visualizar
+frontend/
+├── src/
+├── components/
+├── pages/
+├── services/
+└── charts/
+```
 
 ---
 
-# VISUALIZAÇÕES FORTES
+# Pipeline de Dados
 
-## Gráfico 1
+1. Coleta de dados históricos da OpenF1 API
+2. Limpeza e tratamento dos datasets
+3. Identificação de:
 
-lap_time vs tire_age
-
-Mostra degradação.
-
----
-
-## Gráfico 2
-
-posição ao longo da corrida
-
-Mostra impacto do pit.
-
----
-
-## Gráfico 3
-
-under/overcut success rate
+   * pitstops
+   * stints
+   * compostos
+4. Feature engineering
+5. Análise estatística
+6. Geração de métricas
+7. Visualização dos resultados
+8. Geração de insights probabilísticos
 
 ---
 
-## Gráfico 4
+# Visualizações
 
-comparação de estratégias
+O sistema possui dashboards analíticos contendo:
 
----
-
-# O QUE VOCÊ ENTREGA
-
-Você não entrega “um app”.
-
-Você entrega:
-
-Sistema de análise estratégica de pitstops baseado em dados históricos de Fórmula 1
-
-Isso soa MUITO mais profissional e acadêmico.
+* gráficos de degradação
+* evolução de posição
+* comparação de estratégias
+* eficiência de undercut
+* distribuição de pit loss
+* impacto estratégico dos pits
 
 ---
 
-# O QUE VOCÊ CONSEGUE CONCLUIR
+# Resultados Esperados
 
-Exemplos reais de conclusão:
+O projeto busca identificar:
 
-* “Undercut possui maior eficiência quando gap < 3s”
-* “Pneus SOFT apresentam degradação exponencial após 12 voltas”
-* “Estratégias de 2 pitstops geram vantagem em pistas de alta degradação”
-
-Isso é exatamente o tipo de resultado que professor quer.
+* se estratégias agressivas geram vantagem real
+* quando o undercut é eficiente
+* como a degradação impacta a corrida
+* quais estratégias possuem melhor desempenho
+* como decisões de pit influenciam o resultado final
 
 ---
 
-# O QUE VOCÊ PRECISA FAZER AGORA
+# Objetivo Acadêmico
 
-Prioridade máxima:
+Este projeto foi desenvolvido para a disciplina de Tópicos de Big Data em Python.
 
-## 1.
+O foco principal é:
 
-Coletar múltiplas corridas
+* análise de dados
+* modelagem estatística
+* processamento de grandes volumes de informação
+* visualização analítica
+* geração de insights baseados em dados históricos
 
-## 2.
+---
 
-Criar dataset limpo
+# Status do Projeto
 
-## 3.
-
-Calcular:
-
-* pit impact
-* degradation
-* position gain
+🚧 Em desenvolvimento 🚧
