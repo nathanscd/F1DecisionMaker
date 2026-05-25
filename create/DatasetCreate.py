@@ -1,21 +1,20 @@
-import os
 import time
 import requests
 import pandas as pd
 
+# ==========================================
+# CONFIG
+# ==========================================
+
 BASE_URL = "https://api.openf1.org/v1"
 
 OUTPUT_FILE = "f1_dataset_2025.csv"
-
-# CONFIG
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
 REQUEST_DELAY = 1.5
-
-# REQUEST 
 
 def fetch_data(endpoint, params=None, retries=5):
 
@@ -32,7 +31,7 @@ def fetch_data(endpoint, params=None, retries=5):
                 timeout=30
             )
 
-            # Correção do timeout: RATE LIMIT
+            # RATE LIMIT
             if response.status_code == 429:
 
                 wait = (attempt + 1) * 5
@@ -42,7 +41,7 @@ def fetch_data(endpoint, params=None, retries=5):
 
                 continue
 
-            # Correção do erro: UNPROCESSABLE ENTITY
+            # UNPROCESSABLE ENTITY
             if response.status_code == 422:
 
                 print(f"[422] Endpoint inválido: {endpoint}")
@@ -66,11 +65,13 @@ def fetch_data(endpoint, params=None, retries=5):
             print(f"Erro em {endpoint}: {e}")
 
             wait = (attempt + 1) * 3
+
             time.sleep(wait)
 
     return pd.DataFrame()
 
-# BUSCAR CORRIDAS
+# ==========================================
+# BUSCAR SESSÕES
 
 print("Buscando sessões...")
 
@@ -81,29 +82,26 @@ sessions = fetch_data(
     }
 )
 
-#LIMITA AO PRIMEIRO SEMESTRE
-#sessions = sessions[sessions["date_start"].dt.month <= 6]
+if sessions.empty:
+    raise Exception("Nenhuma sessão encontrada.")
+
+print("Colunas sessions:")
+print(sessions.columns)
 
 sessions = sessions[
     sessions["session_name"]
     .str.contains("Race", na=False)
 ]
 
-
-sessions = sessions[
-    sessions["location"].notna()
-]
-
-if sessions.empty:
-    raise Exception("Nenhuma sessão encontrada.")
-
+sessions["date_start"] = pd.to_datetime(
+    sessions["date_start"],
+    format="ISO8601",
+    errors="coerce"
+)
 
 print(f"{len(sessions)} corridas encontradas.")
 
 dataset_rows = []
-
-# ==========================================
-# LOOP PRINCIPAL
 
 for _, session in sessions.iterrows():
 
@@ -113,22 +111,24 @@ for _, session in sessions.iterrows():
     print(f"Processando sessão {session_key}")
     print("===================================")
 
-    race_name = session.get("session_name")
-    location = session.get("location")
+    meeting_id = session.get("meeting_key")
+
+    race_name = session.get("meeting_name")
+
     country = session.get("country_name")
+
+    location = session.get("location")
+
     circuit_key = session.get("circuit_key")
+
     race_date = session.get("date_start")
 
     # --------------------------------------
     # ENDPOINTS
+    # --------------------------------------
 
     laps = fetch_data(
         "laps",
-        {"session_key": session_key}
-    )
-
-    positions = fetch_data(
-        "position",
         {"session_key": session_key}
     )
 
@@ -142,13 +142,9 @@ for _, session in sessions.iterrows():
         {"session_key": session_key}
     )
 
-    weather = fetch_data(
-        "weather",
-        {"session_key": session_key}
-    )
-
     # --------------------------------------
-    # VALIDAÇÃO DOS DADOS
+    # VALIDAÇÕES
+    # --------------------------------------
 
     if laps.empty:
         print(f"Sessão {session_key} sem laps.")
@@ -158,114 +154,33 @@ for _, session in sessions.iterrows():
         print(f"Sessão {session_key} sem stints.")
         continue
 
-    if positions.empty:
-        print(f"Sessão {session_key} sem positions.")
-        continue
-
     if drivers.empty:
-        print("Sem drivers.")
+        print(f"Sessão {session_key} sem drivers.")
         continue
 
     # --------------------------------------
-    # POSIÇÃO NO GRID
-
-    grid_map = {}
-
-    if "grid_position" in drivers.columns:
-
-        grid_map = dict(
-            zip(
-                drivers["driver_number"],
-                drivers["grid_position"]
-            )
-        )
-
+    # TRATAMENTO DOS DADOS
     # --------------------------------------
-    # POSIÇÃO FINAL
 
-    final_position_map = {}
+    laps["lap_duration"] = pd.to_numeric(
+        laps["lap_duration"],
+        errors="coerce"
+    )
 
-    if not positions.empty:
-
-        positions["date"] = pd.to_datetime(
-            positions["date"],
-            format="ISO8601",
-            errors="coerce"
-        )
-
-        positions = positions.dropna(
-            subset=["date"]
-        )
-
-        latest_positions = (
-            positions
-            .sort_values("date")
-            .groupby("driver_number")
-            .tail(1)
-        )
-
-        final_position_map = dict(
-            zip(
-                latest_positions["driver_number"],
-                latest_positions["position"]
-            )
-        )
-
-    # --------------------------------------
-    # WEATHER 
-
-    avg_air_temp = None
-    avg_track_temp = None
-    max_rainfall = None
-
-    if not weather.empty:
-
-        if "air_temperature" in weather.columns:
-            avg_air_temp = weather[
-                "air_temperature"
-            ].mean()
-
-        if "track_temperature" in weather.columns:
-            avg_track_temp = weather[
-                "track_temperature"
-            ].mean()
-
-        if "rainfall" in weather.columns:
-            max_rainfall = weather[
-                "rainfall"
-            ].max()
+    laps["lap_number"] = pd.to_numeric(
+        laps["lap_number"],
+        errors="coerce"
+    )
 
     # ======================================
-    # PROCESSAMENTO DOS PITS
+    # LOOP DOS PILOTOS
+    # ======================================
 
-    for _, stint in stints.iterrows():
+    for driver_number in drivers[
+        "driver_number"
+    ].unique():
 
         try:
-
-            driver_number = stint["driver_number"]
-
-            stint_number = stint.get("stint_number")
-            
-
-            # primeiro stint NÃO é pit stop
-            if stint_number == 1:
-                continue
-
-            # volta em que o novo stint começou
-            pit_lap = stint.get("lap_start")
-            
-            lap_end = stint.get("lap_end")
-
-            if pd.isna(lap_end):
-                lap_end = pit_lap + 15
-
-            compound = stint.get("compound")
-
-            tire_age = stint.get("tyre_age_at_start")
-
-            # ----------------------------------
-            # DRIVER INFO
-
             driver_info = drivers[
                 drivers["driver_number"]
                 == driver_number
@@ -276,232 +191,431 @@ for _, session in sessions.iterrows():
 
             driver_info = driver_info.iloc[0]
 
+            driver_name = driver_info.get(
+                "full_name"
+            )
+
             team_name = driver_info.get(
                 "team_name"
             )
 
             # ----------------------------------
             # LAPS DO PILOTO
+            # ----------------------------------
 
             driver_laps = laps[
                 laps["driver_number"]
                 == driver_number
-            ]
-            
-            # ----------------------------------
-            # CALCULAR PIT LOSS ESTIMADO
+            ].copy()
 
-            pit_duration = None
+            if driver_laps.empty:
+                continue
 
-            lap_pit = driver_laps[
-                driver_laps["lap_number"] == pit_lap
-            ]
+            driver_laps = driver_laps.sort_values(
+                "lap_number"
+            )
 
-            lap_before_pit = driver_laps[
-                driver_laps["lap_number"] == pit_lap - 1
-            ]
+            # remover laps inválidas
+            driver_laps = driver_laps.dropna(
+                subset=["lap_duration"]
+            )
 
-            lap_after_pit = driver_laps[
-                driver_laps["lap_number"] == pit_lap + 1
-            ]
-
-            if (
-                not lap_pit.empty
-                and not lap_before_pit.empty
-                and not lap_after_pit.empty
-            ):
-
-                pit_lap_time = lap_pit.iloc[0].get(
-                    "lap_duration"
-                )
-
-                before_time = lap_before_pit.iloc[0].get(
-                    "lap_duration"
-                )
-
-                after_time = lap_after_pit.iloc[0].get(
-                    "lap_duration"
-                )
-
-                # média das voltas normais
-                normal_lap = (
-                    before_time + after_time
-                ) / 2
-
-                # perda aproximada do pit
-                pit_duration = (
-                    pit_lap_time - normal_lap
-                )
-
-            # volta antes do pit
-            lap_before = driver_laps[
-                driver_laps["lap_number"]
-                == pit_lap - 1
+            # remover tempos absurdos
+            driver_laps = driver_laps[
+                driver_laps["lap_duration"] > 40
             ]
 
-            lap_duration_before = None
+            driver_laps = driver_laps[
+                driver_laps["lap_duration"] < 200
+            ]
 
-            if not lap_before.empty:
-
-                lap_duration_before = (
-                    lap_before.iloc[0]
-                    .get("lap_duration")
-                )
+            if driver_laps.empty:
+                continue
 
             # ----------------------------------
-            # MÉTRICAS DO STINT
+            # STINTS DO PILOTO
+            # ----------------------------------
 
-            avg_lap_stint = None
-            best_lap_stint = None
-
-            if not driver_laps.empty:
-
-                valid_laps = driver_laps[
-                    (driver_laps["lap_duration"] > 0)
-                    &
-                    (driver_laps["lap_number"] >= pit_lap)
-                    &
-                    (driver_laps["lap_number"] <= lap_end)
-                ]
-
-                if not valid_laps.empty:
-
-                    avg_lap_stint = valid_laps[
-                        "lap_duration"
-                    ].mean()
-
-                    best_lap_stint = valid_laps[
-                        "lap_duration"
-                    ].min()
+            driver_stints = stints[
+                stints["driver_number"]
+                == driver_number
+            ].copy()
 
             # ----------------------------------
             # POSIÇÕES
+            # ----------------------------------
 
-            position_before = None
-            position_after = None
-
-            if not positions.empty:
-
-                driver_positions = positions[
-                    positions["driver_number"]
-                    == driver_number
-                ]
-
-                driver_positions = (
-                driver_positions
-                .sort_values("date")
+            final_position = (
+                driver_laps.iloc[-1]
+                .get("position")
             )
 
-            position_before = None
-            position_after = None
+            initial_position = (
+                driver_laps.iloc[0]
+                .get("position")
+            )
 
-            if not driver_positions.empty:
-
-                # aproximação temporal
-                midpoint = len(driver_positions) // 2
-
-                position_before = (
-                    driver_positions.iloc[
-                        max(midpoint - 1, 0)
-                    ]["position"]
-                )
-
-                position_after = (
-                    driver_positions.iloc[
-                        min(midpoint + 1,
-                        len(driver_positions)-1)
-                    ]["position"]
-                )
-                    
-                print(positions.columns)
-
-            # ----------------------------------
-            # PIT POSITION LOSS
-
-            pit_position_loss = None
+            position_change = None
 
             if (
-                position_before is not None
-                and position_after is not None
+                pd.notna(initial_position)
+                and pd.notna(final_position)
             ):
 
-                pit_position_loss = (
-                    position_after
-                    - position_before
+                position_change = (
+                    initial_position
+                    - final_position
                 )
 
             # ----------------------------------
-            # ROW
+            # CONSISTÊNCIA
+            # ----------------------------------
 
-            row = {
+            consistency_score = (
+                driver_laps["lap_duration"]
+                .std()
+            )
 
-                "race_name": race_name,
-                "country": country,
-                "location": location,
-                "race_date": race_date,
+            # ----------------------------------
+            # CONTADOR DE PITS
+            # ----------------------------------
 
-                "session_key": session_key,
-                "circuit_key": circuit_key,
+            pit_count = 0
 
-                "driver_number": driver_number,
-                "team_name": team_name,
+            # ==================================
+            # LOOP DAS VOLTAS
+            # ==================================
 
-                "grid_position":
-                    grid_map.get(driver_number),
+            for idx, lap in driver_laps.iterrows():
 
-                "final_position":
-                    final_position_map.get(
-                        driver_number
-                    ),
+                lap_number = lap.get(
+                    "lap_number"
+                )
 
-                "pit_lap": pit_lap,
-                "pit_duration": pit_duration,
+                lap_time = lap.get(
+                    "lap_duration"
+                )
 
-                "lap_duration_before_pit":
-                    lap_duration_before,
+                position = lap.get(
+                    "position"
+                )
 
-                "position_before_pit":
-                    position_before,
+                sector_1 = lap.get(
+                    "duration_sector_1"
+                )
 
-                "position_after_pit":
-                    position_after,
+                sector_2 = lap.get(
+                    "duration_sector_2"
+                )
 
-                "pit_position_loss":
-                    pit_position_loss,
+                sector_3 = lap.get(
+                    "duration_sector_3"
+                )
 
-                "compound": compound,
+                lap_start_time = lap.get(
+                    "date_start"
+                )
 
-                "tire_age_at_start":
-                    tire_age,
+                # ------------------------------
+                # STINT ATUAL
+                # ------------------------------
 
-                "stint_number":
-                    stint_number,
+                current_stint = driver_stints[
+                    (driver_stints["lap_start"]
+                     <= lap_number)
+                    &
+                    (driver_stints["lap_end"]
+                     >= lap_number)
+                ]
 
-                "avg_lap_stint":
-                    avg_lap_stint,
+                compound = None
+                stint_number = None
+                lap_start = None
+                lap_end = None
 
-                "best_lap_stint":
-                    best_lap_stint,
+                if not current_stint.empty:
 
-                "avg_air_temp":
-                    avg_air_temp,
+                    current_stint = (
+                        current_stint.iloc[0]
+                    )
 
-                "avg_track_temp":
-                    avg_track_temp,
+                    compound = current_stint.get(
+                        "compound"
+                    )
 
-                "max_rainfall":
-                    max_rainfall
-            }
+                    stint_number = current_stint.get(
+                        "stint_number"
+                    )
 
-            dataset_rows.append(row)
+                    lap_start = current_stint.get(
+                        "lap_start"
+                    )
+
+                    lap_end = current_stint.get(
+                        "lap_end"
+                    )
+
+                # ------------------------------
+                # TIRE AGE
+                # ------------------------------
+
+                tire_age = None
+
+                if (
+                    pd.notna(lap_number)
+                    and pd.notna(lap_start)
+                ):
+
+                    tire_age = (
+                        lap_number - lap_start
+                    )
+
+                # ------------------------------
+                # PIT FLAG
+                # ------------------------------
+
+                pit_flag = 0
+
+                if (
+                    pd.notna(stint_number)
+                    and stint_number > 1
+                    and lap_number == lap_start
+                ):
+
+                    pit_flag = 1
+
+                    pit_count += 1
+
+                # ------------------------------
+                # ROLLING PACE
+                # ------------------------------
+
+                rolling_pace = (
+                    driver_laps[
+                        driver_laps["lap_number"]
+                        <= lap_number
+                    ]["lap_duration"]
+                    .tail(3)
+                    .mean()
+                )
+
+                # ------------------------------
+                # LAP TIME DELTA
+                # ------------------------------
+
+                previous_lap = driver_laps[
+                    driver_laps["lap_number"]
+                    == lap_number - 1
+                ]
+
+                lap_time_delta = None
+
+                if not previous_lap.empty:
+
+                    prev_time = (
+                        previous_lap.iloc[0]
+                        .get("lap_duration")
+                    )
+
+                    if (
+                        pd.notna(lap_time)
+                        and pd.notna(prev_time)
+                    ):
+
+                        lap_time_delta = (
+                            lap_time - prev_time
+                        )
+
+                # ------------------------------
+                # DEGRADATION
+                # ------------------------------
+
+                degradation = None
+
+                if pd.notna(lap_start):
+
+                    first_stint_lap = driver_laps[
+                        driver_laps["lap_number"]
+                        == lap_start
+                    ]
+
+                    if not first_stint_lap.empty:
+
+                        first_lap_time = (
+                            first_stint_lap.iloc[0]
+                            .get("lap_duration")
+                        )
+
+                        if (
+                            pd.notna(lap_time)
+                            and pd.notna(first_lap_time)
+                        ):
+
+                            degradation = (
+                                lap_time
+                                - first_lap_time
+                            )
+
+                # ------------------------------
+                # PIT LOSS
+                # ------------------------------
+
+                pit_loss = None
+
+                if pit_flag == 1:
+
+                    if (
+                        pd.notna(lap_time)
+                        and pd.notna(rolling_pace)
+                    ):
+
+                        pit_loss = (
+                            lap_time
+                            - rolling_pace
+                        )
+
+                # ------------------------------
+                # STRATEGY TYPE
+                # ------------------------------
+
+                if pit_count == 0:
+
+                    strategy_type = "0-stop"
+
+                elif pit_count == 1:
+
+                    strategy_type = "1-stop"
+
+                elif pit_count == 2:
+
+                    strategy_type = "2-stop"
+
+                else:
+
+                    strategy_type = "3-stop"
+
+                # ------------------------------
+                # ROW
+                # ------------------------------
+
+                row = {
+
+                    # IDs
+                    "meeting_id":
+                        meeting_id,
+
+                    "session_id":
+                        session_key,
+
+                    # Corrida
+                    "race_name":
+                        race_name,
+
+                    "country":
+                        country,
+
+                    "location":
+                        location,
+
+                    "circuit_key":
+                        circuit_key,
+
+                    "race_date":
+                        race_date,
+
+                    "driver_number":
+                        driver_number,
+
+                    "driver_name":
+                        driver_name,
+
+                    "team_name":
+                        team_name,
+
+                    # Volta
+                    "lap_number":
+                        lap_number,
+
+                    "lap_start_time":
+                        lap_start_time,
+
+                    # Performance
+                    "position":
+                        position,
+
+                    "lap_time":
+                        lap_time,
+
+                    "sector_1":
+                        sector_1,
+
+                    "sector_2":
+                        sector_2,
+
+                    "sector_3":
+                        sector_3,
+
+                    # Pneus
+                    "compound":
+                        compound,
+
+                    "stint_number":
+                        stint_number,
+
+                    "stint_lap_start":
+                        lap_start,
+
+                    "stint_lap_end":
+                        lap_end,
+
+                    # Variáveis derivadas
+                    "tire_age":
+                        tire_age,
+
+                    "degradation":
+                        degradation,
+
+                    "rolling_pace":
+                        rolling_pace,
+
+                    "lap_time_delta":
+                        lap_time_delta,
+
+                    "pit_flag":
+                        pit_flag,
+
+                    "pit_count":
+                        pit_count,
+
+                    "pit_loss":
+                        pit_loss,
+
+                    "consistency_score":
+                        consistency_score,
+
+                    "strategy_type":
+                        strategy_type,
+
+                    # Variáveis alvo
+                    "final_position":
+                        final_position,
+
+                    "position_change":
+                        position_change,
+                }
+
+                dataset_rows.append(row)
 
         except Exception as e:
 
             print(
-                f"Erro no pit stop: {e}"
+                f"Erro piloto "
+                f"{driver_number}: {e}"
             )
 
-    # SALVAMENTO PARCIAL (INCREMENTO)
+    # ======================================
+    # SALVAMENTO PARCIAL
+    # ======================================
 
     partial_df = pd.DataFrame(dataset_rows)
 
@@ -514,9 +628,10 @@ for _, session in sessions.iterrows():
         f"Salvamento parcial: "
         f"{len(partial_df)} linhas"
     )
-    
-#-------------------------------------
+
+# ==========================================
 # FINAL
+# ==========================================
 
 final_df = pd.DataFrame(dataset_rows)
 
@@ -530,5 +645,7 @@ final_df.to_csv(
 print("\n===================================")
 print("DATASET FINAL GERADO")
 print("===================================")
+
 print(final_df.shape)
+
 print(f"Arquivo: {OUTPUT_FILE}")
