@@ -8,7 +8,7 @@ import pandas as pd
 
 BASE_URL = "https://api.openf1.org/v1"
 
-OUTPUT_FILE = "f1_dataset_2025.csv"
+OUTPUT_FILE = "Datasets/f1_dataset_2025.csv"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
@@ -142,9 +142,18 @@ for _, session in sessions.iterrows():
         {"session_key": session_key}
     )
 
+    positions = fetch_data(
+    "position",
+    {"session_key": session_key}
+)
+
     # --------------------------------------
     # VALIDAÇÕES
     # --------------------------------------
+
+    if positions.empty:
+        print(f"Sessão {session_key} sem posições.")
+        continue
 
     if laps.empty:
         print(f"Sessão {session_key} sem laps.")
@@ -181,6 +190,10 @@ for _, session in sessions.iterrows():
     ].unique():
 
         try:
+            driver_positions = positions[
+                positions["driver_number"] == driver_number
+            ].copy()
+
             driver_info = drivers[
                 drivers["driver_number"]
                 == driver_number
@@ -245,27 +258,44 @@ for _, session in sessions.iterrows():
             # POSIÇÕES
             # ----------------------------------
 
-            final_position = (
-                driver_laps.iloc[-1]
-                .get("position")
-            )
+            # ordenar posições no tempo
+            driver_positions = driver_positions.sort_values("date")
 
-            initial_position = (
-                driver_laps.iloc[0]
-                .get("position")
-            )
-
+            #initial_position = None
+            final_position = None
             position_change = None
 
-            if (
-                pd.notna(initial_position)
-                and pd.notna(final_position)
-            ):
+            if not driver_positions.empty:
 
-                position_change = (
-                    initial_position
-                    - final_position
+                initial_position = (
+                    driver_positions.iloc[0]
+                    .get("position")
                 )
+
+                final_position = (
+                    driver_positions.iloc[-1]
+                    .get("position")
+                )
+
+                initial_position = pd.to_numeric(
+                    initial_position,
+                    errors="coerce"
+                )
+
+                final_position = pd.to_numeric(
+                    final_position,
+                    errors="coerce"
+                )
+
+                if (
+                    pd.notna(initial_position)
+                    and pd.notna(final_position)
+                ):
+
+                    position_change = (
+                        initial_position
+                        - final_position
+                    )
 
             # ----------------------------------
             # CONSISTÊNCIA
@@ -282,11 +312,38 @@ for _, session in sessions.iterrows():
 
             pit_count = 0
 
+            driver_positions["date"] = pd.to_datetime(
+                driver_positions["date"],
+                errors="coerce"
+            )
+
+            driver_laps["date_start"] = pd.to_datetime(
+                driver_laps["date_start"],
+                errors="coerce"
+            )
+
             # ==================================
             # LOOP DAS VOLTAS
             # ==================================
 
             for idx, lap in driver_laps.iterrows():
+
+                lap_time_ref = lap.get("date_start")
+
+                current_position = driver_positions[
+                    driver_positions["date"] <= lap_time_ref
+                ]
+
+                position = None
+
+                if not current_position.empty:
+
+                    position = (
+                        current_position
+                        .sort_values("date")
+                        .iloc[-1]
+                        .get("position")
+                    )
 
                 lap_number = lap.get(
                     "lap_number"
@@ -296,9 +353,6 @@ for _, session in sessions.iterrows():
                     "lap_duration"
                 )
 
-                position = lap.get(
-                    "position"
-                )
 
                 sector_1 = lap.get(
                     "duration_sector_1"
@@ -460,20 +514,16 @@ for _, session in sessions.iterrows():
                 # PIT LOSS
                 # ------------------------------
 
-                pit_loss = None
+                pit_loss = 0
 
-                if pit_flag == 1:
-
-                    if (
-                        pd.notna(lap_time)
-                        and pd.notna(rolling_pace)
-                    ):
-
-                        pit_loss = (
-                            lap_time
-                            - rolling_pace
-                        )
-
+                if (
+                    pd.notna(lap_time)
+                    and pd.notna(rolling_pace)
+                    and pit_count != 0
+                ):
+                    pit_loss = (
+                        lap_time - rolling_pace
+                    )
                 # ------------------------------
                 # STRATEGY TYPE
                 # ------------------------------
