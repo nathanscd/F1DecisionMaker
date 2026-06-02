@@ -59,7 +59,7 @@ if df.empty:
     st.stop()
 
 required_columns = [
-    "race_name",
+    "session_id",
     "driver_name",
     "lap_number",
     "position",
@@ -77,7 +77,7 @@ if missing:
 
 df = df.dropna(
     subset=[
-        "race_name",
+        "session_id",
         "driver_name",
         "lap_number",
         "position"
@@ -101,25 +101,33 @@ df = df.dropna(
     ]
 )
 
-races = sorted(
-    df["race_name"].unique()
+df["session_label"] = (
+    df["session_id"].astype(str)
+    + " - "
+    + df["country"].fillna("")
+    + " - "
+    + df["location"].fillna("")
 )
 
-if len(races) == 0:
-    st.error("Nenhuma corrida encontrada.")
+sessions = sorted(
+    df["session_id"].unique()
+)
+
+if len(sessions) == 0:
+    st.error("Nenhuma sessão encontrada.")
     st.stop()
 
-race_selected = st.selectbox(
-    "Selecionar Corrida",
-    races
+session_selected = st.selectbox(
+    "Selecionar Sessão",
+    sessions
 )
 
 race_df = df[
-    df["race_name"] == race_selected
+    df["session_id"] == session_selected
 ]
 
 
-st.header("📈 Posição Antes e Depois do Pit Stop")
+st.header("Posição Antes e Depois do Pit Stop")
 
 fig = go.Figure()
 
@@ -167,7 +175,7 @@ for driver in drivers:
         )
 
 fig.update_layout(
-    title=f"{race_selected} - Evolução de Posição",
+    title=f" Evolução de Posição",
     xaxis_title="Volta",
     yaxis_title="Posição",
     yaxis=dict(
