@@ -8,7 +8,7 @@ import pandas as pd
 
 BASE_URL = "https://api.openf1.org/v1"
 
-OUTPUT_FILE = "Datasets/f1_dataset_2025.csv"
+OUTPUT_FILE = "Datasets/f1_dataset_2023.csv"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
@@ -78,7 +78,7 @@ print("Buscando sessões...")
 sessions = fetch_data(
     "sessions",
     {
-        "year": 2025
+        "year": 2023
     }
 )
 
@@ -244,7 +244,7 @@ for _, session in sessions.iterrows():
 
             if driver_laps.empty:
                 continue
-
+            
             # ----------------------------------
             # STINTS DO PILOTO
             # ----------------------------------
@@ -253,6 +253,16 @@ for _, session in sessions.iterrows():
                 stints["driver_number"]
                 == driver_number
             ].copy()
+
+            driver_stints["stint_length"] = (
+                driver_stints["lap_end"]
+                - driver_stints["lap_start"]
+            )
+
+            driver_stints = driver_stints[
+                driver_stints["stint_length"] > 1
+            ]
+            
 
             # ----------------------------------
             # POSIÇÕES
@@ -364,6 +374,18 @@ for _, session in sessions.iterrows():
 
                 sector_3 = lap.get(
                     "duration_sector_3"
+                )
+                
+                i1_speed = lap.get(
+                    "i1_speed"
+                )
+
+                i2_speed = lap.get(
+                    "i2_speed"
+                )
+
+                st_speed = lap.get(
+                    "st_speed"
                 )
 
                 lap_start_time = lap.get(
@@ -557,10 +579,6 @@ for _, session in sessions.iterrows():
                     "session_id":
                         session_key,
 
-                    # Corrida
-                    "race_name":
-                        race_name,
-
                     "country":
                         country,
 
@@ -604,6 +622,15 @@ for _, session in sessions.iterrows():
 
                     "sector_3":
                         sector_3,
+                    
+                    "i1_speed":
+                        i1_speed,
+
+                    "i2_speed":
+                        i2_speed,
+
+                    "st_speed":
+                        st_speed,
 
                     # Pneus
                     "compound":
