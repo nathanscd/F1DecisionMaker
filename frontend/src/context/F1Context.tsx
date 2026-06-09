@@ -105,8 +105,5 @@ export function F1Provider({ children }: { children: ReactNode }) {
 
 export function useF1() {
   const context = useContext(F1Context);
-  if (!context) {
-    throw new Error("useF1 deve ser utilizado dentro de um F1Provider");
-  }
   return context;
 }
