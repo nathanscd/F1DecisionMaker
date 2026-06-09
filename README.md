@@ -329,27 +329,166 @@ O sistema calcula:
 
 # 🗂 Estrutura do Projeto
 
+O projeto está organizado em dois grandes módulos: backend responsável pelo processamento dos dados e frontend responsável pela visualização e interação com o usuário.
+
 ```bash
-frontend
+F1DecisionMaker
 │
-├── src
-│   ├── assets
-│   ├── components
-│   ├── layouts
-│   ├── pages
-│   ├── services
-│   ├── types
-│   ├── App.tsx
-│   └── main.tsx
+├── backend
+│   │
+│   ├── app
+│   │   ├── create
+│   │   ├── README.md
+│   │   └── test.py
+│   │
+│   ├── f1_dataset_2023.csv
+│   ├── f1_dataset_2024.csv
+│   └── f1_dataset_clean.csv
 │
-backend
+├── frontend
+│   │
+│   ├── node_modules
+│   │
+│   ├── public
+│   │   ├── data
+│   │   │   ├── f1_dataset_2023.csv
+│   │   │   ├── f1_dataset_2024.csv
+│   │   │   └── f1_dataset_2025.csv
+│   │   │
+│   │   ├── favicon.svg
+│   │   └── icons.svg
+│   │
+│   ├── src
+│   │   ├── assets
+│   │   ├── components
+│   │   ├── context
+│   │   ├── data
+│   │   ├── layouts
+│   │   ├── pages
+│   │   ├── services
+│   │   ├── types
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   └── main.tsx
+│   │
+│   ├── .gitignore
+│   ├── eslint.config.js
+│   ├── f1_dataset_2025.csv
+│   ├── f1_dataset_clean.csv
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── README.md
+│   ├── tsconfig.app.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   └── vite.config.ts
 │
-├── analytics
-├── dataset
-├── models
-├── services
-└── app.py
+└── README.md
 ```
+
+---
+
+## 📁 Organização dos Diretórios
+
+### Backend 🐍
+
+Responsável por:
+
+- Coleta dos dados da OpenF1 API;
+- Limpeza e tratamento dos datasets;
+- Engenharia de atributos;
+- Processamento estatístico;
+- Geração de métricas;
+- Futuras APIs em Flask.
+
+---
+
+### Frontend ⚛️
+
+Responsável por:
+
+- Dashboard interativo;
+- Visualização das corridas;
+- Simulações de estratégias;
+- Replay histórico das corridas;
+- Motor de insights probabilísticos;
+- Análises estatísticas;
+- Experiência do usuário.
+
+---
+
+### `src/components`
+
+Componentes reutilizáveis da interface.
+
+Exemplos:
+
+- Cards
+- Tabelas
+- Rankings
+- Filtros
+- Gráficos
+
+---
+
+### `src/pages`
+
+Páginas principais da aplicação.
+
+Exemplos:
+
+- Dashboard
+- Corridas
+- Pilotos
+- Equipes
+- Simulação
+- Replay Histórico
+- Insights
+- Sobre
+
+---
+
+### `src/services`
+
+Camada responsável pelo processamento dos dados.
+
+Contém serviços para:
+
+- Leitura dos CSVs;
+- Estatísticas;
+- Simulações;
+- Geração de insights;
+- Análises de estratégia.
+
+---
+
+### `src/types`
+
+Interfaces TypeScript utilizadas em toda a aplicação.
+
+Exemplos:
+
+- RegistroVolta
+- PerfilPiloto
+- PerfilEquipe
+- ResultadoEstrategia
+- ParadaPit
+
+---
+
+### `public/data`
+
+Datasets criados pelo Backend e utilizados pelo frontend para análise e visualização:
+
+- Temporada 2023;
+- Temporada 2024;
+- Temporada 2025.
+
+---
+
+Essa estrutura segue o padrão de aplicações modernas baseadas em React + TypeScript no frontend e Python para processamento e análise de dados no backend.
 
 ---
 
