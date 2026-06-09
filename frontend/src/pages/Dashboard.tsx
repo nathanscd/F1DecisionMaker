@@ -3,7 +3,7 @@ import { useF1 } from "../context/F1Context";
 import DashboardLayout from "../layouts/DashboardLayout";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ScatterChart, Scatter, BarChart, Bar, Legend
+  ScatterChart, Scatter, BarChart, Bar
 } from "recharts";
 
 const CORES_PILOTOS = ["#e10600","#00d2be","#ffd600","#0067ff","#ff8800","#c92d4b","#00a550","#9b59b6","#e67e22","#3498db","#1abc9c","#e74c3c","#f39c12","#8e44ad","#27ae60","#2980b9","#c0392b","#d35400","#7f8c8d","#2c3e50"];
