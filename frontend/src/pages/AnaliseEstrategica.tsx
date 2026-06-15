@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Line } from "recharts";
 import { useF1 } from "../context/F1Context";
 import DashboardLayout from "../layouts/DashboardLayout";
 import { compilarDadosEstrategias } from "../services/analyticsService";
@@ -15,11 +16,223 @@ export default function AnaliseEstrategicaPagina() {
     return processarMatrizCorrelacao(dados);
   }, [dados]);
 
-  const scatterData = useMemo(() => {
-    return dados.filter(d => d.pit_flag === 1 && d.pit_loss && d.final_position)
-      .map(d => ({ pit_loss: d.pit_loss, final_position: d.final_position, strategy: d.strategy_type }))
-      .slice(0, 400);
-  }, [dados]);
+function calcularPearson(
+  x: number[],
+  y: number[]
+): number {
+
+  const n = x.length;
+
+  if (n < 2) return 0;
+
+  const mediaX =
+    x.reduce((a, b) => a + b, 0) / n;
+
+  const mediaY =
+    y.reduce((a, b) => a + b, 0) / n;
+
+  let numerador = 0;
+  let somaX = 0;
+  let somaY = 0;
+
+  for (let i = 0; i < n; i++) {
+
+    const dx = x[i] - mediaX;
+    const dy = y[i] - mediaY;
+
+    numerador += dx * dy;
+    somaX += dx * dx;
+    somaY += dy * dy;
+  }
+
+  const denominador =
+    Math.sqrt(somaX * somaY);
+
+  return denominador === 0
+    ? 0
+    : numerador / denominador;
+}
+
+function calcularRegressao(
+  dados: {
+    pit_loss: number;
+    final_position: number;
+  }[]
+) {
+
+  const n = dados.length;
+
+  if (n < 2) {
+    return {
+      slope: 0,
+      intercept: 0
+    };
+  }
+
+  const mediaX =
+    dados.reduce((s, d) => s + d.pit_loss, 0) / n;
+
+  const mediaY =
+    dados.reduce((s, d) => s + d.final_position, 0) / n;
+
+  let numerador = 0;
+  let denominador = 0;
+
+  dados.forEach(d => {
+
+    numerador +=
+      (d.pit_loss - mediaX) *
+      (d.final_position - mediaY);
+
+    denominador +=
+      (d.pit_loss - mediaX) ** 2;
+  });
+
+  const slope =
+    denominador === 0
+      ? 0
+      : numerador / denominador;
+
+  const intercept =
+    mediaY - slope * mediaX;
+
+  return {
+    slope,
+    intercept
+  };
+}
+
+const dadosUnicos = Array.from(
+  new Map(
+    dados.map(d => [
+      `${d.session_key}-${d.driver_number}-${d.lap_number}`,
+      d
+    ])
+  ).values()
+);
+
+const scatterData = useMemo(() => {
+
+  type PilotoCorrida = {
+    driver: number;
+    final_position: number;
+    total_pit_loss: number;
+    strategy: string;
+  };
+
+  const agrupado = new Map<string, PilotoCorrida>();
+
+  // evita contabilizar a mesma parada várias vezes
+  const pitsContabilizados = new Set<string>();
+
+  dadosUnicos.forEach(d => {
+
+    if (
+      d.driver_number == null ||
+      d.final_position == null
+    ) {
+      return;
+    }
+
+    const chavePiloto =
+      `${d.session_key}-${d.driver_number}`;
+
+    if (!agrupado.has(chavePiloto)) {
+
+      agrupado.set(chavePiloto, {
+        driver: d.driver_number,
+        final_position: d.final_position,
+        total_pit_loss: 0,
+        strategy: d.strategy_type ?? "N/A"
+      });
+    }
+
+    // identifica uma parada única
+    const chavePit =
+      `${d.meeting_key}-${d.session_key}-${d.driver_number}-${d.lap_number}`;
+
+    if (
+      d.pit_flag === 1 &&
+      d.pit_loss != null &&
+      !pitsContabilizados.has(chavePit)
+    ) {
+
+      pitsContabilizados.add(chavePit);
+
+      agrupado.get(chavePiloto)!.total_pit_loss +=
+        Number(d.pit_loss);
+    }
+  });
+
+  return Array
+    .from(agrupado.values())
+    .filter(p => p.total_pit_loss > 0);
+
+}, [dados]);
+
+console.table(
+  dados
+    .filter(
+      d =>
+        d.driver_number === 1 &&
+        d.lap_number === 15
+    )
+    .slice(0, 5)
+);
+
+const trendLine = useMemo(() => {
+
+  if (scatterData.length < 3)
+    return [];
+
+  const { slope, intercept } =
+    calcularRegressao(
+      scatterData.map(d => ({
+        pit_loss: d.total_pit_loss,
+        final_position: d.final_position
+      }))
+    );
+
+  const xMin =
+    Math.min(
+      ...scatterData.map(
+        d => d.total_pit_loss
+      )
+    );
+
+  const xMax =
+    Math.max(
+      ...scatterData.map(
+        d => d.total_pit_loss
+      )
+    );
+
+  return [
+  {
+    total_pit_loss: xMin,
+    final_position:
+      slope * xMin + intercept
+  },
+  {
+    total_pit_loss: xMax,
+    final_position:
+      slope * xMax + intercept
+  }
+];
+
+}, [scatterData]);
+
+const correlacaoPit = useMemo(() => {
+
+  if (scatterData.length < 3)
+    return 0;
+
+  return calcularPearson(
+    scatterData.map(d => d.total_pit_loss),
+    scatterData.map(d => d.final_position)
+  );
+
+}, [scatterData]);
 
   // Cor do coeficiente de correlação
   const corCelula = (val: number): string => {
@@ -65,16 +278,93 @@ export default function AnaliseEstrategicaPagina() {
 
           <div className="painel">
             <div className="painel-titulo-barra">
-              <span className="painel-titulo">Perda em Pit × Posição Final</span>
+              <div>
+                <span className="painel-titulo">
+                  Perda Total em Pit × Posição Final
+                </span>
+
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "#8b9ac4",
+                    marginTop: 4
+                  }}
+                >
+                  Pearson r = {correlacaoPit.toFixed(2)}
+                </div>
+              </div>
             </div>
             <div className="painel-corpo">
               <ResponsiveContainer width="100%" height={220}>
-                <ScatterChart margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e2640" />
-                  <XAxis dataKey="pit_loss" name="Perda no Pit (s)" tick={{ fill: '#8b9ac4', fontSize: 11 }} />
-                  <YAxis dataKey="final_position" name="Posição Final" reversed domain={[1,20]} tick={{ fill: '#8b9ac4', fontSize: 11 }} />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#111520', border: '1px solid #1e2640', borderRadius: 6, color: '#f0f2f8', fontSize: '11px' }} />
-                  <Scatter data={scatterData} fill="#00d2be" opacity={0.5} />
+                <ScatterChart
+                  data={scatterData}
+                  margin={{
+                    top: 10,
+                    right: 20,
+                    left: 10,
+                    bottom: 10
+                  }}
+                >
+
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1e2640"
+                  />
+
+                  <XAxis
+                    type="number"
+                    dataKey="total_pit_loss"
+                    name="Perda Total em Pit"
+                    unit="s"
+                    domain={[
+                      "dataMin",
+                      "dataMax"
+                    ]}
+                    tick={{
+                      fill: "#8b9ac4",
+                      fontSize: 11
+                    }}
+                  />
+
+                  <YAxis
+                    type="number"
+                    dataKey="final_position"
+                    reversed
+                    domain={[1, 20]}
+                    tick={{
+                      fill: "#8b9ac4",
+                      fontSize: 11
+                    }}
+                  />
+
+                  <Tooltip
+                    cursor={{
+                      strokeDasharray: "3 3"
+                    }}
+                    contentStyle={{
+                      background: "#111520",
+                      border: "1px solid #1e2640",
+                      borderRadius: 6
+                    }}
+                  />
+
+                  <Legend />
+
+                  <Scatter
+                    name="Pilotos"
+                    data={scatterData}
+                    fill="#00d2be"
+                    opacity={0.25}
+                  />
+
+                  <Scatter
+                    name="Tendência"
+                    data={trendLine}
+                    line
+                    shape={() => null}
+                    fill="#e10600"
+                  />
+
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
