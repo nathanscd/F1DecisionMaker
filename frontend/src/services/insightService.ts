@@ -8,15 +8,16 @@ export interface CasoHistorico {
   location: string;
   ano: number;
   pit_count: number;
-  pit_lap: number; // volta da primeira parada
-  tire_age: number; // idade do pneu na parada
-  degradation: number; // degradação média no primeiro stint
-  rolling_pace: number; // ritmo médio geral
-  position_before_pit: number; // posição antes da parada
-  compound: string; // composto inicial
+  pit_lap: number;
+  tire_age: number;
+  degradation: number;
+  rolling_pace: number;
+  consistency_score: number;
+  position_before_pit: number;
+  compound: string;
   final_position: number;
   position_change: number;
-  distancia?: number; // preenchido no cálculo de distância
+  distancia?: number;
 }
 
 export interface EntradaKNN {
@@ -25,6 +26,7 @@ export interface EntradaKNN {
   tire_age: number;
   degradation: number;
   rolling_pace: number;
+  consistency_score: number;
   position_before_pit: number;
   compound: string;
 }
@@ -34,17 +36,13 @@ export interface PrevisaoKNN {
   saldo_posicoes_esperado: number;
   distribuicao_probabilidade: { faixa: string; probabilidade: number }[];
   vizinhos: CasoHistorico[];
-  grau_confianca: number; // em % (0 a 100)
+  grau_confianca: number;
 }
 
-/**
- * Agrega dados de volta em casos históricos consolidados por piloto e corrida
- */
 export function compilarCasosHistoricos(dados: RegistroVolta[], ano: number): CasoHistorico[] {
   const grupos = new Map<string, RegistroVolta[]>();
 
   dados.forEach((row) => {
-    // Chave única para piloto em um GP específico daquela temporada
     const chave = `${row.meeting_id}_${row.driver_number}`;
     if (!grupos.has(chave)) {
       grupos.set(chave, []);
@@ -55,12 +53,11 @@ export function compilarCasosHistoricos(dados: RegistroVolta[], ano: number): Ca
   const casos: CasoHistorico[] = [];
 
   grupos.forEach((voltas) => {
-    if (voltas.length < 5) return; // ignora corridas incompletas ou abandonadas no início
+    if (voltas.length < 5) return;
 
     const primeiraVolta = voltas[0];
     const ultimaVolta = voltas[voltas.length - 1];
 
-    // Identificar a primeira parada de pit
     const voltasPit = voltas.filter((v) => v.pit_flag === 1);
     const primeiraParada = voltasPit[0];
 
@@ -68,7 +65,6 @@ export function compilarCasosHistoricos(dados: RegistroVolta[], ano: number): Ca
     const pitLap = primeiraParada ? primeiraParada.lap_number : 0;
     const tireAge = primeiraParada ? primeiraParada.tire_age : 0;
 
-    // Degradação média do primeiro stint (voltas até o primeiro pit)
     const voltasStint1 = primeiraParada 
       ? voltas.filter((v) => v.lap_number < primeiraParada.lap_number)
       : voltas;
@@ -76,15 +72,14 @@ export function compilarCasosHistoricos(dados: RegistroVolta[], ano: number): Ca
       ? voltasStint1.reduce((acc, v) => acc + (v.degradation || 0), 0) / voltasStint1.length
       : 0.15;
 
-    // Posição antes do pit
     let posBefore = primeiraVolta.position;
     if (primeiraParada) {
       const vAntes = voltas.find((v) => v.lap_number === primeiraParada.lap_number - 1);
       if (vAntes) posBefore = vAntes.position;
     }
 
-    // Ritmo de corrida (rolling pace) médio
     const rollingPaceMedio = voltas.reduce((acc, v) => acc + (v.rolling_pace || 100), 0) / voltas.length;
+    const consistenciaMedia = voltas.reduce((acc, v) => acc + (v.consistency_score || 0), 0) / voltas.length;
 
     casos.push({
       driver_name: primeiraVolta.driver_name,
@@ -98,6 +93,7 @@ export function compilarCasosHistoricos(dados: RegistroVolta[], ano: number): Ca
       tire_age: tireAge,
       degradation: avgDeg,
       rolling_pace: rollingPaceMedio,
+      consistency_score: consistenciaMedia,
       position_before_pit: posBefore,
       compound: primeiraVolta.compound || "MEDIUM",
       final_position: ultimaVolta.final_position || ultimaVolta.position,
@@ -108,9 +104,6 @@ export function compilarCasosHistoricos(dados: RegistroVolta[], ano: number): Ca
   return casos;
 }
 
-/**
- * Executa o algoritmo k-Nearest Neighbors (k-NN) para prever o resultado estratégico
- */
 export function executarKNN(
   casos: CasoHistorico[],
   entrada: EntradaKNN,
@@ -126,17 +119,16 @@ export function executarKNN(
     };
   }
 
-  // Obter limites para normalização min-max
   const limites = {
     pit_count: { min: 0, max: 4 },
     pit_lap: { min: 1, max: 60 },
     tire_age: { min: 0, max: 40 },
     degradation: { min: 0, max: 0.8 },
     rolling_pace: { min: 70, max: 130 },
+    consistency_score: { min: 0, max: 10 },
     position_before_pit: { min: 1, max: 20 },
   };
 
-  // Normalizar valor individual
   const norm = (val: number, lim: { min: number; max: number }) => {
     return (val - lim.min) / (lim.max - lim.min || 1);
   };
@@ -147,10 +139,10 @@ export function executarKNN(
     tire_age: norm(entrada.tire_age, limites.tire_age),
     degradation: norm(entrada.degradation, limites.degradation),
     rolling_pace: norm(entrada.rolling_pace, limites.rolling_pace),
+    consistency_score: norm(entrada.consistency_score, limites.consistency_score),
     position_before_pit: norm(entrada.position_before_pit, limites.position_before_pit),
   };
 
-  // Calcular distâncias euclidianas para todos os casos históricos
   const casosComDistancia = casos.map((caso) => {
     const casoNorm = {
       pit_count: norm(caso.pit_count, limites.pit_count),
@@ -158,40 +150,35 @@ export function executarKNN(
       tire_age: norm(caso.tire_age, limites.tire_age),
       degradation: norm(caso.degradation, limites.degradation),
       rolling_pace: norm(caso.rolling_pace, limites.rolling_pace),
+      consistency_score: norm(caso.consistency_score, limites.consistency_score),
       position_before_pit: norm(caso.position_before_pit, limites.position_before_pit),
     };
 
-    // Distância Euclidiana Ponderada
-    // Pesos: ritmo de corrida e posição anterior são críticos, seguidos do lap de pit
     const d2 =
-      Math.pow(entradaNorm.pit_count - casoNorm.pit_count, 2) * 1.0 +
+      Math.pow(entradaNorm.pit_count - casoNorm.pit_count, 2) * 0.5 +
       Math.pow(entradaNorm.pit_lap - casoNorm.pit_lap, 2) * 1.5 +
       Math.pow(entradaNorm.tire_age - casoNorm.tire_age, 2) * 0.8 +
-      Math.pow(entradaNorm.degradation - casoNorm.degradation, 2) * 1.0 +
-      Math.pow(entradaNorm.rolling_pace - casoNorm.rolling_pace, 2) * 2.5 + // ritmo é muito importante
+      Math.pow(entradaNorm.degradation - casoNorm.degradation, 2) * 0.5 +
+      Math.pow(entradaNorm.rolling_pace - casoNorm.rolling_pace, 2) * 2.5 +
+      Math.pow(entradaNorm.consistency_score - casoNorm.consistency_score, 2) * 2.2 +
       Math.pow(entradaNorm.position_before_pit - casoNorm.position_before_pit, 2) * 2.0;
 
-    // Penalidade se o composto de pneu inicial for diferente
     const penalidadeComposto = entrada.compound !== caso.compound ? 0.25 : 0;
     const distancia = Math.sqrt(d2) + penalidadeComposto;
 
     return { ...caso, distancia };
   });
 
-  // Ordenar pela menor distância
   casosComDistancia.sort((a, b) => a.distancia! - b.distancia!);
 
-  // Pegar os top K vizinhos mais próximos
   const vizinhosProximos = casosComDistancia.slice(0, k);
 
-  // Calcular médias dos vizinhos
   const somaPosFinal = vizinhosProximos.reduce((acc, v) => acc + v.final_position, 0);
   const somaSaldoPos = vizinhosProximos.reduce((acc, v) => acc + v.position_change, 0);
 
   const posicaoEsperada = parseFloat((somaPosFinal / k).toFixed(1));
   const saldoPosicoesEsperado = parseFloat((somaSaldoPos / k).toFixed(1));
 
-  // Criar distribuição de probabilidade para faixas de resultado
   let p1_p3 = 0;
   let p4_p5 = 0;
   let p6_p10 = 0;
@@ -212,7 +199,6 @@ export function executarKNN(
     { faixa: "Fora dos Pontos (P11-P20)", probabilidade: Math.round((p11_p20 / k) * 100) },
   ];
 
-  // Grau de confiança é inversamente proporcional à distância média dos vizinhos selecionados
   const distMedia = vizinhosProximos.reduce((acc, v) => acc + v.distancia!, 0) / k;
   const grauConfianca = Math.max(10, Math.min(98, Math.round(100 - distMedia * 90)));
 

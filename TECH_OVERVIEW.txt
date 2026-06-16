@@ -1,0 +1,234 @@
+================================================================================
+  F1 DECISION MAKER — TECHNICAL OVERVIEW
+================================================================================
+
+PROJECT SUMMARY
+--------------------------------------------------------------------------------
+F1 Decision Maker is a data-driven strategic analysis platform for Formula 1.
+The core research question is:
+  "Does a driver's final position have a direct relationship with the
+   pitstop strategy adopted?"
+
+It is an academic project (Big Data in Python course) that uses statistics,
+data analysis, and machine learning — no generative AI / LLMs.
+
+Data sources: F1 seasons 2023 and 2024 (and partially 2025), obtained from
+the OpenF1 public API and processed into CSV datasets.
+
+================================================================================
+  ARCHITECTURE — HIGH LEVEL
+================================================================================
+
+  [ OpenF1 API ]
+       |
+       v
+  [ Python — Backend ]
+  DatasetCreate.py        → fetches & engineers features → CSV files
+  test.py                 → exploratory / validation script
+       |
+       v
+  [ CSV Datasets ]          (served as static files in /public/data/)
+  f1_dataset_2023.csv
+  f1_dataset_2024.csv
+       |
+       v
+  [ React — Frontend ]
+  Reads CSVs at runtime via PapaParse → all processing in-browser
+  No live backend API in the current version (Flask planned for future)
+
+================================================================================
+  BACKEND
+================================================================================
+
+Language        : Python
+Purpose         : Data collection, cleaning, feature engineering, CSV export
+No active server: backend is currently offline / pre-processing only
+
+--- Files ---
+
+backend/app/create/DatasetCreate.py
+  - Main ETL script
+  - Calls OpenF1 REST API endpoints: sessions, laps, position, stints,
+    drivers, weather
+  - Handles: rate limiting (429), invalid endpoints (422), retries
+  - Engineers features per pit stop / stint:
+      pit_lap, pit_duration (estimated), compound, tire_age,
+      position_before_pit, position_after_pit, pit_position_loss,
+      avg_lap_stint, best_lap_stint, weather averages
+  - Saves partial (incremental) and final CSVs
+
+backend/app/test.py
+  - Single-driver exploratory script for one race session
+  - Demonstrates the merge pipeline:
+      laps ← positions (merge_asof by timestamp) ← stints (expanded by lap)
+  - Detects pitstops via stint change OR pit API endpoint (OR logic)
+  - Computes: tire_age, lap_time_delta, rolling_pace (3-lap rolling mean),
+    degradation (lap_time − first lap of stint)
+  - Outputs a clean CSV for validation
+
+--- Backend Libraries ---
+
+requests        — HTTP calls to OpenF1 API
+pandas          — data manipulation, merging, groupby, feature engineering
+(planned) Flask — REST API server
+(planned) NumPy — numerical computation
+(planned) Scikit-Learn — ML models
+
+================================================================================
+  DATASETS
+================================================================================
+
+Location  : backend/f1_dataset_2023.csv  (~6.7 MB)
+            backend/f1_dataset_2024.csv  (~7.3 MB)
+            frontend/public/data/        (copies served to browser)
+
+Key columns per row (one row = one lap or one pit stint record):
+
+  meeting_id, session_id, race_name, country, location, circuit_key,
+  race_date, driver_number, driver_name, team_name,
+  lap_number, lap_start_time, position,
+  lap_time, sector_1, sector_2, sector_3,
+  compound, stint_number, stint_lap_start, stint_lap_end,
+  tire_age, degradation, rolling_pace, lap_time_delta,
+  pit_flag, pit_count, pit_loss,
+  consistency_score, strategy_type,
+  final_position, position_change
+
+================================================================================
+  FRONTEND
+================================================================================
+
+Language   : TypeScript
+Framework  : React 19
+Build tool : Vite 8
+Routing    : React Router DOM v7
+Styling    : Vanilla CSS (index.css + App.css — no utility framework)
+Linting    : ESLint 10 with TypeScript-ESLint and React plugins
+
+--- Key Dependencies ---
+
+papaparse        — parses CSV files in the browser (no backend needed)
+recharts         — charting library for all data visualisations
+react-router-dom — client-side routing
+
+--- Project Structure (frontend/src/) ---
+
+main.tsx         — ReactDOM entry point
+App.tsx          — Route definitions
+
+context/
+  F1Context.tsx  — Global state via React Context API
+                   Manages: selected year, selected GP, selected driver/team,
+                   loaded data array, loading/error states, available GPs &
+                   drivers lists. Triggers CSV reload when the year changes.
+
+services/        — All data processing logic (runs in-browser)
+  f1Service.ts      - Loads CSV via fetch + PapaParse with in-memory cache
+                      Provides: carregarDadosF1(), obterListaGPs(),
+                      obterPilotosPorGP(), obterEquipes()
+  insightService.ts - k-NN engine (fully implemented in TypeScript):
+                      compilarCasosHistoricos() — aggregates lap rows into
+                        per-driver-per-race historical cases
+                      executarKNN() — weighted Euclidean distance k-NN (k=7)
+                        Features: pit_count, pit_lap, tire_age, degradation,
+                        rolling_pace, position_before_pit, compound penalty
+                        Returns: expected position, position delta,
+                        probability distribution, confidence score
+  analyticsService.ts  - Strategy comparisons, correlations, heatmaps
+  simulationService.ts - Alternative timeline / scenario simulation
+  statisticsService.ts - Pearson correlation, distributions, scatter data
+
+types/
+  F1Types.ts     — Core TypeScript interfaces:
+                   RegistroVolta, ParadaPit, ResultadoEstrategia,
+                   PerfilPiloto, PerfilEquipe
+
+components/      — Reusable UI components
+  Header.tsx, Sidebar.tsx, Filters.tsx,
+  Chart.tsx, CardMetric.tsx,
+  DriverRanking.tsx, TeamRanking.tsx, DriverTable.tsx
+
+pages/           — Full page views (one per route)
+  Home.tsx             /
+  Dashboard.tsx        /dados
+  Corridas.tsx         /corridas
+  Pilotos.tsx          /pilotos
+  Equipes.tsx          /equipes
+  AnaliseEstrategica.tsx /analise-estrategica
+  Simulation.tsx       /simulacao
+  ReplayCorrida.tsx    /replay-corrida
+  VersaoGeral.tsx      /versao-geral
+  Sobre.tsx            /sobre
+
+================================================================================
+  MACHINE LEARNING / ANALYTICS (all runs client-side in TypeScript)
+================================================================================
+
+k-Nearest Neighbors (insightService.ts)
+  - Compiles historical cases from lap data
+  - Normalises features with min-max scaling
+  - Weighted Euclidean distance:
+      pit_count ×1.0, pit_lap ×1.5, tire_age ×0.8,
+      degradation ×1.0, rolling_pace ×2.5, position_before_pit ×2.0
+  - Compound mismatch penalty: +0.25 to distance
+  - Outputs: expected final position, expected position change,
+    probability bands (Podium / Top5 / Points / Outside Points),
+    confidence score (0–100%)
+
+Analytics (analyticsService.ts)
+  - Strategy efficiency comparison (1-stop vs 2-stop vs 3-stop)
+  - Pearson correlation between strategic variables and final position
+
+Statistics (statisticsService.ts)
+  - Correlation matrices, distributions, scatter data
+
+Simulation (simulationService.ts)
+  - Alternative timeline: re-runs race scenario with different pitstop params
+  - Estimates outcome based on historical patterns
+
+Custom Metrics computed from data:
+  Strategy Efficiency Score
+  Tire Management Score
+  Consistency Score
+  Position Recovery Score
+  Pit Stop Efficiency Index
+  Undercut / Overcut Effectiveness Score
+
+================================================================================
+  HOW TO RUN
+================================================================================
+
+Frontend (main app — fully self-contained):
+  cd frontend
+  npm install
+  npm run dev
+  → Runs at http://localhost:5173
+
+Backend (data collection scripts only):
+  cd backend
+  python -m venv .venv
+  .venv\Scripts\activate          (Windows)
+  pip install requests pandas
+  python app/create/DatasetCreate.py
+
+================================================================================
+  PLANNED / FUTURE WORK
+================================================================================
+
+- Flask REST API (replace static CSV serving)
+- SQLite database
+- Random Forest & XGBoost predictors
+- Monte Carlo simulations
+- Weather analysis integration (rain, SC, VSC)
+- Multi-season cross-comparison
+- Real-time telemetry
+- Advanced clustering
+
+================================================================================
+  VERSION CONTROL
+================================================================================
+
+Repository: https://github.com/nathanscd/F1DecisionMaker
+VCS: Git
+
+================================================================================
